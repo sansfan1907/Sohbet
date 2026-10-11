@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#008069">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>Sohbet</title>
 <style>
 :root{--bg:#fff;--fg:#111b21;--mut:#667781;--bar:#008069;--acc:#25d366;--line:#e9edef;--me:#d9fdd3;--them:#fff;--chat:#efeae2}
@@ -71,6 +74,8 @@ const A=getAuth(fb),D=getFirestore(fb),R=document.getElementById('app'),fp=docum
 const cols=['#d1584f','#4a7fb5','#8a6bb5','#d08b2e','#3d9b7a','#b5527f'];
 const S={u:null,users:{},chats:[],msgs:[],v:'auth',reg:0,show:0,err:'',tab:0,cid:null,sel:{},f:{u:'',p:'',p2:''},mode:'chat'};
 let subs=[],subMsgs=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();window.dip=e;if(S.u)render()});
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 
 const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const img=s=>s&&String(s).startsWith('data:image/')?s:null;
@@ -100,7 +105,7 @@ function render(force){
  }else if(S.v==='main'){
   const me=uOf(S.u.uid);
   if(S.tab===2){
-   h=`<header><h1>Profil</h1></header><main><div class="f"><label for="fp" data-m="pp" style="cursor:pointer" aria-label="Profil fotoğrafını değiştir">${av(me.name,me.photo)}</label><span class="lbl">Fotoğrafı değiştirmek için dokun</span><span class="lbl">Adın (herkes bunu görür)</span><input type="text" id="nm" value="${esc(me.name)}" maxlength="30"><button class="btn" data-a="savep">Kaydet</button><span class="lbl">Senin kodun (arkadaşların seni bununla ekler)</span><div class="pw"><input type="text" id="mc" value="${fmtc(me.code)||'Hazırlanıyor...'}" readonly><button class="btn" data-a="cp">Kopyala</button></div><span class="lbl">Kullanıcı adın: ${esc(me.username)}</span><button class="lnk" data-a="out">Çıkış yap</button></div></main>${tabs()}`;
+   h=`<header><h1>Profil</h1></header><main><div class="f"><label for="fp" data-m="pp" style="cursor:pointer" aria-label="Profil fotoğrafını değiştir">${av(me.name,me.photo)}</label><span class="lbl">Fotoğrafı değiştirmek için dokun</span><span class="lbl">Adın (herkes bunu görür)</span><input type="text" id="nm" value="${esc(me.name)}" maxlength="30"><button class="btn" data-a="savep">Kaydet</button><span class="lbl">Senin kodun (arkadaşların seni bununla ekler)</span><div class="pw"><input type="text" id="mc" value="${fmtc(me.code)||'Hazırlanıyor...'}" readonly><button class="btn" data-a="cp">Kopyala</button></div><span class="lbl">Kullanıcı adın: ${esc(me.username)}</span>${window.dip?'<button class="btn" data-a="inst">📲 Uygulamayı yükle</button>':''}<button class="lnk" data-a="out">Çıkış yap</button></div></main>${tabs()}`;
   }else{
    const l=S.chats.filter(c=>S.tab===0||c.group);
    h=`<header><h1>Sohbet</h1></header><main>${l.length?l.map(c=>`<button class="row" data-a="open" data-i="${c.id}">${av(title(c),picOf(c))}<div class="b"><div class="n">${esc(title(c))}</div><div class="p">${c.last?esc((c.group&&c.last.from!==S.u.uid?uOf(c.last.from).name+': ':'')+c.last.text):'Yeni sohbet'}</div></div><span class="tm">${c.last?hm(c.last.t):''}</span></button>`).join(''):'<div class="empty">Henüz sohbet yok. Sağ alttaki ➕ ile arkadaşının kodunu gir.</div>'}</main><button class="fab" data-a="newc" aria-label="Yeni sohbet veya grup">➕</button>${tabs()}`;
@@ -188,6 +193,7 @@ R.addEventListener('click',async e=>{
  else if(a==='backc')openChat(S.cid);
  else if(a==='gsave'){const c=S.chats.find(x=>x.id===S.cid),n=document.getElementById('gname').value.trim();if(!c||!isAdm(c)||!n)return;try{await updateDoc(doc(D,'chats',S.cid),{name:n});if(n!==c.name)await sysMsg(S.cid,uOf(S.u.uid).name+' grup adını "'+n+'" yaptı');b.textContent='Kaydedildi'}catch(e){alert('Kaydedilemedi: '+e.code)}}
  else if(a==='kick'){const c=S.chats.find(x=>x.id===S.cid),id=b.dataset.i;if(!c||!isAdm(c)||id===S.u.uid)return;if(!confirm(uOf(id).name+' gruptan çıkarılsın mı?'))return;try{await updateDoc(doc(D,'chats',S.cid),{members:arrayRemove(id)});await sysMsg(S.cid,uOf(id).name+' gruptan çıkarıldı')}catch(e){alert('Çıkarılamadı: '+e.code)}}
+ else if(a==='inst'){const q=window.dip;window.dip=null;render(true);if(q)q.prompt()}
  else if(a==='out')signOut(A);
 });
 R.addEventListener('change',e=>{if(e.target.type==='checkbox')S.sel[e.target.dataset.i]=e.target.checked});
