@@ -152,9 +152,9 @@ async function go(){
 }
 async function mk(){
  const g=id=>document.getElementById(id);S.cd=g('cd').value;S.gn=g('gn').value;
- const codes=[...new Set(S.cd.split(/[\s,;]+/).map(x=>x.replace(/\D/g,'')).filter(Boolean))],n=S.gn.trim();
- if(!codes.length)return fail('Arkadaşının kodunu yaz.');
- if(codes.some(c=>c.length!==9))return fail('Kod 9 haneli olmalı (örnek: 123 456 789).');
+ const dg=S.cd.replace(/\D/g,''),codes=dg.length&&dg.length%9===0?[...new Set(dg.match(/.{9}/g))]:[],n=S.gn.trim();
+ if(!dg)return fail('Arkadaşının kodunu yaz.');
+ if(!codes.length)return fail('Kod 9 haneli olmalı (örnek: 123 456 789). Kaç hane yazdığını kontrol et.');
  try{
   const ids=[];
   for(const c of codes){const q=await getDoc(doc(D,'codes',c));if(!q.exists())return fail(fmtc(c)+' kodlu kimse bulunamadı.');if(q.data().uid===S.u.uid)return fail('Kendi kodunu yazdın.');ids.push(q.data().uid)}
