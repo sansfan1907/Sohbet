@@ -38,6 +38,8 @@ nav button.on{color:var(--bar);font-weight:600}
 .m .s{display:block;font-size:12px;font-weight:600;color:var(--bar)}
 .m img{max-width:100%;border-radius:6px;display:block}
 .m i{display:block;text-align:right;font-size:11px;color:var(--mut);font-style:normal}
+.m.sys{align-self:center;background:transparent;color:var(--mut);font-size:12px;max-width:90%;text-align:center}
+.xb{font-size:13px;padding:6px 10px;border:1px solid #fff8;border-radius:14px}
 .bar{display:flex;gap:8px;padding:8px;background:var(--chat);align-items:center}
 input[type=text],input[type=password]{flex:1;padding:11px 14px;border-radius:22px;border:1px solid var(--line);background:var(--bg);color:var(--fg);font:inherit;width:100%}
 .send{background:var(--bar);color:#fff;width:42px;height:42px;border-radius:50%}
@@ -62,7 +64,7 @@ input[type=text],input[type=password]{flex:1;padding:11px 14px;border-radius:22p
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.14.0/firebase-app.js";
 import{getAuth,onAuthStateChanged,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut}from"https://www.gstatic.com/firebasejs/10.14.0/firebase-auth.js";
-import{getFirestore,doc,setDoc,updateDoc,addDoc,collection,onSnapshot,query,where,orderBy,serverTimestamp}from"https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
+import{getFirestore,doc,setDoc,updateDoc,addDoc,collection,onSnapshot,query,where,orderBy,serverTimestamp,getDoc,arrayRemove,runTransaction}from"https://www.gstatic.com/firebasejs/10.14.0/firebase-firestore.js";
 
 const fb=initializeApp({apiKey:"AIzaSyAJtEAURxrUMU_Hjc9N3X3k1MMxFwz42-Y",authDomain:"sohbet-6f6b7.firebaseapp.com",projectId:"sohbet-6f6b7",storageBucket:"sohbet-6f6b7.firebasestorage.app",messagingSenderId:"705891559189",appId:"1:705891559189:web:f10a2af993a673f1a6eb1c"});
 const A=getAuth(fb),D=getFirestore(fb),R=document.getElementById('app'),fp=document.getElementById('fp');
@@ -76,9 +78,13 @@ const hm=t=>{const d=t&&t.toDate?t.toDate():new Date();return d.getHours()+':'+S
 const col=s=>cols[[...String(s)].reduce((a,c)=>a+c.charCodeAt(0),0)%6];
 const av=(name,photo,cls)=>img(photo)?`<img class="av ${cls||''}" src="${img(photo)}" alt="">`:`<div class="av ${cls||''}" style="background:${col(name)}">${esc((name||'?')[0].toUpperCase())}</div>`;
 const uOf=id=>S.users[id]||{name:'?'};
+const fmtc=c=>c?String(c).replace(/(\d{3})(?=\d)/g,'$1 '):'';
+async function claimCode(uid,extra){for(let i=0;i<8;i++){const code=String(Math.floor(1e8+Math.random()*9e8));try{await runTransaction(D,async t=>{const r=doc(D,'codes',code);if((await t.get(r)).exists())throw new Error('dup');t.set(r,{uid});t.set(doc(D,'users',uid),{...extra,code},{merge:true})});return code}catch(e){if(e.message!=='dup')throw e}}}
 const other=c=>c.members.find(x=>x!==S.u.uid);
 const title=c=>c.group?c.name:uOf(other(c)).name;
-const picOf=c=>c.group?null:uOf(other(c)).photo;
+const picOf=c=>c.group?c.photo:uOf(other(c)).photo;
+const adminOf=c=>c.admin||c.members[0],isAdm=c=>adminOf(c)===S.u.uid;
+const sysMsg=(id,text)=>addDoc(collection(D,'chats',id,'messages'),{from:S.u.uid,sys:true,text,t:serverTimestamp()});
 const msgErr=c=>({'auth/email-already-in-use':'Bu kullanıcı adı alınmış, başka bir tane dene.','auth/invalid-credential':'Kullanıcı adı veya şifre yanlış.','auth/user-not-found':'Kullanıcı adı veya şifre yanlış.','auth/wrong-password':'Kullanıcı adı veya şifre yanlış.','auth/network-request-failed':'İnternet bağlantısı yok.','auth/operation-not-allowed':'Firebase\'de E-posta/Şifre girişi açık değil.','auth/too-many-requests':'Çok fazla deneme yaptın, biraz bekle.'}[c]||'Bir hata oldu ('+c+').');
 
 function shrink(file,max,q){return new Promise(res=>{const i=new Image(),r=new FileReader();r.onload=()=>{i.onload=()=>{const k=Math.min(1,max/Math.max(i.width,i.height)),c=document.createElement('canvas');c.width=Math.round(i.width*k);c.height=Math.round(i.height*k);c.getContext('2d').drawImage(i,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',q))};i.src=r.result};r.readAsDataURL(file)})}
@@ -94,30 +100,35 @@ function render(force){
  }else if(S.v==='main'){
   const me=uOf(S.u.uid);
   if(S.tab===2){
-   h=`<header><h1>Profil</h1></header><main><div class="f"><label for="fp" data-m="pp" style="cursor:pointer" aria-label="Profil fotoğrafını değiştir">${av(me.name,me.photo)}</label><span class="lbl">Fotoğrafı değiştirmek için dokun</span><span class="lbl">Adın (herkes bunu görür)</span><input type="text" id="nm" value="${esc(me.name)}" maxlength="30"><button class="btn" data-a="savep">Kaydet</button><span class="lbl">Kullanıcı adın: ${esc(me.username)}</span><button class="lnk" data-a="out">Çıkış yap</button></div></main>${tabs()}`;
+   h=`<header><h1>Profil</h1></header><main><div class="f"><label for="fp" data-m="pp" style="cursor:pointer" aria-label="Profil fotoğrafını değiştir">${av(me.name,me.photo)}</label><span class="lbl">Fotoğrafı değiştirmek için dokun</span><span class="lbl">Adın (herkes bunu görür)</span><input type="text" id="nm" value="${esc(me.name)}" maxlength="30"><button class="btn" data-a="savep">Kaydet</button><span class="lbl">Senin kodun (arkadaşların seni bununla ekler)</span><div class="pw"><input type="text" id="mc" value="${fmtc(me.code)||'Hazırlanıyor...'}" readonly><button class="btn" data-a="cp">Kopyala</button></div><span class="lbl">Kullanıcı adın: ${esc(me.username)}</span><button class="lnk" data-a="out">Çıkış yap</button></div></main>${tabs()}`;
   }else{
    const l=S.chats.filter(c=>S.tab===0||c.group);
-   h=`<header><h1>Sohbet</h1></header><main>${l.length?l.map(c=>`<button class="row" data-a="open" data-i="${c.id}">${av(title(c),picOf(c))}<div class="b"><div class="n">${esc(title(c))}</div><div class="p">${c.last?esc((c.group&&c.last.from!==S.u.uid?uOf(c.last.from).name+': ':'')+c.last.text):'Yeni sohbet'}</div></div><span class="tm">${c.last?hm(c.last.t):''}</span></button>`).join(''):'<div class="empty">Henüz sohbet yok. Sağ alttaki düğmeyle birini ekle.</div>'}</main><button class="fab" data-a="newc" aria-label="Yeni sohbet veya grup">➕</button>${tabs()}`;
+   h=`<header><h1>Sohbet</h1></header><main>${l.length?l.map(c=>`<button class="row" data-a="open" data-i="${c.id}">${av(title(c),picOf(c))}<div class="b"><div class="n">${esc(title(c))}</div><div class="p">${c.last?esc((c.group&&c.last.from!==S.u.uid?uOf(c.last.from).name+': ':'')+c.last.text):'Yeni sohbet'}</div></div><span class="tm">${c.last?hm(c.last.t):''}</span></button>`).join(''):'<div class="empty">Henüz sohbet yok. Sağ alttaki ➕ ile arkadaşının kodunu gir.</div>'}</main><button class="fab" data-a="newc" aria-label="Yeni sohbet veya grup">➕</button>${tabs()}`;
   }
  }else if(S.v==='newc'){
-  const us=Object.entries(S.users).filter(([id])=>id!==S.u.uid);
-  h=`<header><button class="ib" data-a="back" aria-label="Geri">←</button><h1>Yeni sohbet</h1></header><main><div class="f"><span class="lbl">Bir kişi seçersen sohbet, birden fazla seçersen grup olur.</span>${us.length?us.map(([id,u])=>`<label class="ck"><input type="checkbox" data-i="${id}"${S.sel[id]?' checked':''}>${av(u.name,u.photo,'sm')}${esc(u.name)}</label>`).join(''):'<div class="empty">Henüz başka kullanıcı yok. Arkadaşların kayıt olunca burada görünecek.</div>'}<input type="text" id="gn" placeholder="Grup adı (2+ kişi seçince)" maxlength="30">${S.err?`<span class="er" role="alert">${esc(S.err)}</span>`:''}<button class="btn" data-a="mk">Başlat</button></div></main>`;
+  h=`<header><button class="ib" data-a="back" aria-label="Geri">←</button><h1>Kod ile ekle</h1></header><main><div class="f"><span class="lbl">Arkadaşının kodunu yaz. Grup için birden fazla kodu boşlukla ayırarak yaz.</span><input type="text" id="cd" inputmode="numeric" placeholder="123 456 789" autocomplete="off" value="${esc(S.cd||'')}"><input type="text" id="gn" placeholder="Grup adı (birden fazla kod varsa)" maxlength="30" value="${esc(S.gn||'')}">${S.err?`<span class="er" role="alert">${esc(S.err)}</span>`:''}<button class="btn" data-a="mk">Başlat</button><span class="lbl">Senin kodun: ${fmtc(uOf(S.u.uid).code)}</span></div></main>`;
+ }else if(S.v==='info'){
+  const c=S.chats.find(x=>x.id===S.cid);if(!c){S.v='main';return render(true)}
+  const adm=isAdm(c);
+  h=`<header><button class="ib" data-a="backc" aria-label="Geri">←</button><h1>Grup bilgisi</h1></header><main><div class="f">${adm?`<label for="fp" data-m="gp" style="cursor:pointer" aria-label="Grup fotoğrafını değiştir">${av(c.name,c.photo)}</label><span class="lbl">Fotoğrafı değiştirmek için dokun</span><input type="text" id="gname" value="${esc(c.name)}" maxlength="30"><button class="btn" data-a="gsave">Adı kaydet</button>`:`${av(c.name,c.photo)}<h2 style="margin:0">${esc(c.name)}</h2>`}<span class="lbl">${c.members.length} üye</span>${c.members.map(id=>{const u=uOf(id);return `<div class="ck">${av(u.name,u.photo,'sm')}<span style="flex:1">${esc(u.name)}${id===S.u.uid?' (sen)':''}${id===adminOf(c)?' <small style="color:var(--mut)">yönetici</small>':''}</span>${adm&&id!==S.u.uid?`<button class="xb" style="border-color:var(--mut)" data-a="kick" data-i="${id}">Çıkar</button>`:''}</div>`}).join('')}<button class="lnk" data-a="leave">Gruptan çık</button></div></main>`;
  }else if(S.v==='chat'){paintChat();return}
  R.innerHTML=h;
 }
 
 function openChat(id){
- S.v='chat';S.cid=id;S.msgs=[];
+ S.v='chat';S.cid=id;S.msgs=[];S.seenChat=null;
  const c=S.chats.find(x=>x.id===id);
- R.innerHTML=`<header><button class="ib" data-a="back" aria-label="Geri">←</button><span id="hd" style="display:contents"></span></header><main id="mm"><div class="msgs" id="ms"></div></main><div class="bar"><label class="ib" for="fp" data-m="chat" style="cursor:pointer" aria-label="Fotoğraf gönder">📎</label><input type="text" id="tx" placeholder="Mesaj yaz" aria-label="Mesaj"><button class="send" data-a="send" aria-label="Gönder">➤</button></div>`;
+ R.innerHTML=`<header><button class="ib" data-a="back" aria-label="Geri">←</button><span id="hd" style="display:contents"></span><span id="lv" style="display:contents"></span></header><main id="mm"><div class="msgs" id="ms"></div></main><div class="bar"><label class="ib" for="fp" data-m="chat" style="cursor:pointer" aria-label="Fotoğraf gönder">📎</label><input type="text" id="tx" placeholder="Mesaj yaz" aria-label="Mesaj"><button class="send" data-a="send" aria-label="Gönder">➤</button></div>`;
  paintChat();
  if(subMsgs)subMsgs();
  subMsgs=onSnapshot(query(collection(D,'chats',id,'messages'),orderBy('t')),s=>{S.msgs=s.docs.map(d=>d.data());paintChat(true)});
 }
 function paintChat(scroll){
- const c=S.chats.find(x=>x.id===S.cid);if(!c)return;
- document.getElementById('hd').innerHTML=av(title(c),picOf(c),'sm')+`<div class="t">${esc(title(c))}</div>`;
- document.getElementById('ms').innerHTML=S.msgs.map(m=>{const mine=m.from===S.u.uid;return `<div class="m${mine?' me':''}">${c.group&&!mine?`<span class="s">${esc(uOf(m.from).name)}</span>`:''}${img(m.img)?`<img src="${img(m.img)}" alt="Fotoğraf">`:''}${m.text?esc(m.text):''}<i>${hm(m.t)}</i></div>`}).join('');
+ if(S.v!=='chat')return;
+ const c=S.chats.find(x=>x.id===S.cid);if(!c)return;S.seenChat=S.cid;
+ document.getElementById('hd').innerHTML=c.group?`<button data-a="info" aria-label="Grup bilgisi" style="display:flex;align-items:center;gap:10px;flex:1;min-width:0;text-align:left">${av(title(c),picOf(c),'sm')}<div class="t">${esc(title(c))}</div></button>`:av(title(c),picOf(c),'sm')+`<div class="t">${esc(title(c))}</div>`;
+ document.getElementById('lv').innerHTML=c.group?'<button class="xb" data-a="leave">Gruptan çık</button>':'';
+ document.getElementById('ms').innerHTML=S.msgs.map(m=>{if(m.sys)return `<div class="m sys">${esc(m.text)}</div>`;const mine=m.from===S.u.uid;return `<div class="m${mine?' me':''}">${c.group&&!mine?`<span class="s">${esc(uOf(m.from).name)}</span>`:''}${img(m.img)?`<img src="${img(m.img)}" alt="Fotoğraf">`:''}${m.text?esc(m.text):''}<i>${hm(m.t)}</i></div>`}).join('');
  if(scroll){const mm=document.getElementById('mm');mm.scrollTop=mm.scrollHeight}
 }
 async function send(photo){
@@ -135,26 +146,26 @@ async function go(){
  if(p.length<6)return fail('Şifre en az 6 karakter olmalı.');
  if(S.reg&&p!==S.f.p2)return fail('Şifreler aynı değil.');
  try{
-  if(S.reg){const r=await createUserWithEmailAndPassword(A,u+'@sohbet.app',p);await setDoc(doc(D,'users',r.user.uid),{username:u,name:u,photo:null})}
+  if(S.reg){const r=await createUserWithEmailAndPassword(A,u+'@sohbet.app',p);await claimCode(r.user.uid,{username:u,name:u,photo:null})}
   else await signInWithEmailAndPassword(A,u+'@sohbet.app',p);
  }catch(e){fail(msgErr(e.code))}
 }
 async function mk(){
- const ids=Object.keys(S.sel).filter(k=>S.sel[k]),n=document.getElementById('gn').value.trim();
- if(!ids.length)return fail('En az bir kişi seç.');
+ const g=id=>document.getElementById(id);S.cd=g('cd').value;S.gn=g('gn').value;
+ const codes=[...new Set(S.cd.split(/[\s,;]+/).map(x=>x.replace(/\D/g,'')).filter(Boolean))],n=S.gn.trim();
+ if(!codes.length)return fail('Arkadaşının kodunu yaz.');
+ if(codes.some(c=>c.length!==9))return fail('Kod 9 haneli olmalı (örnek: 123 456 789).');
  try{
-  if(ids.length===1){
-   const id=[S.u.uid,ids[0]].sort().join('_');
-   await setDoc(doc(D,'chats',id),{members:[S.u.uid,ids[0]],group:false},{merge:true});S.sel={};openChat(id);
-  }else{
-   if(!n)return fail('Grup için bir ad yaz.');
-   const r=await addDoc(collection(D,'chats'),{members:[S.u.uid,...ids],group:true,name:n});S.sel={};openChat(r.id);
-  }
+  const ids=[];
+  for(const c of codes){const q=await getDoc(doc(D,'codes',c));if(!q.exists())return fail(fmtc(c)+' kodlu kimse bulunamadı.');if(q.data().uid===S.u.uid)return fail('Kendi kodunu yazdın.');ids.push(q.data().uid)}
+  if(ids.length===1){const id=[S.u.uid,ids[0]].sort().join('_');await setDoc(doc(D,'chats',id),{members:[S.u.uid,ids[0]],group:false},{merge:true});S.cd='';S.gn='';openChat(id)}
+  else{if(!n)return fail('Grup için bir ad yaz.');const r=await addDoc(collection(D,'chats'),{members:[S.u.uid,...ids],group:true,name:n,admin:S.u.uid,photo:null});S.cd='';S.gn='';openChat(r.id)}
  }catch(e){fail('Oluşturulamadı: '+e.code)}
 }
 fp.onchange=async()=>{
  const f=fp.files[0];if(!f)return;fp.value='';
  if(S.mode==='pp'){const d=await shrink(f,200,.7);await updateDoc(doc(D,'users',S.u.uid),{photo:d})}
+ else if(S.mode==='gp'){const c=S.chats.find(x=>x.id===S.cid);if(c&&isAdm(c)){const d=await shrink(f,200,.7);await updateDoc(doc(D,'chats',S.cid),{photo:d});sysMsg(S.cid,uOf(S.u.uid).name+' grup fotoğrafını değiştirdi')}}
  else send(await shrink(f,700,.65));
 };
 document.addEventListener('click',e=>{const l=e.target.closest&&e.target.closest('[data-m]');if(l)S.mode=l.dataset.m});
@@ -171,6 +182,12 @@ R.addEventListener('click',async e=>{
  else if(a==='mk')mk();
  else if(a==='send')send();
  else if(a==='savep'){const n=document.getElementById('nm').value.trim()||uOf(S.u.uid).username;await updateDoc(doc(D,'users',S.u.uid),{name:n});b.textContent='Kaydedildi'}
+ else if(a==='leave'){if(!confirm('Gruptan çıkmak istediğine emin misin?'))return;const id=S.cid,nm=uOf(S.u.uid).name,c=S.chats.find(x=>x.id===id),rest=c.members.filter(x=>x!==S.u.uid);try{await addDoc(collection(D,'chats',id,'messages'),{from:S.u.uid,sys:true,text:nm+' gruptan çıktı',t:serverTimestamp()});await updateDoc(doc(D,'chats',id),{members:arrayRemove(S.u.uid),...(isAdm(c)?{admin:rest[0]||null}:{}),last:{text:nm+' gruptan çıktı',from:S.u.uid,t:serverTimestamp()}})}catch(e){alert('Çıkılamadı: '+e.code);return}if(subMsgs){subMsgs();subMsgs=null}S.v='main';render(true)}
+ else if(a==='cp'){try{await navigator.clipboard.writeText(uOf(S.u.uid).code);b.textContent='Kopyalandı'}catch(e){b.textContent='Kodu elle kopyala'}}
+ else if(a==='info'){S.v='info';render(true)}
+ else if(a==='backc')openChat(S.cid);
+ else if(a==='gsave'){const c=S.chats.find(x=>x.id===S.cid),n=document.getElementById('gname').value.trim();if(!c||!isAdm(c)||!n)return;try{await updateDoc(doc(D,'chats',S.cid),{name:n});if(n!==c.name)await sysMsg(S.cid,uOf(S.u.uid).name+' grup adını "'+n+'" yaptı');b.textContent='Kaydedildi'}catch(e){alert('Kaydedilemedi: '+e.code)}}
+ else if(a==='kick'){const c=S.chats.find(x=>x.id===S.cid),id=b.dataset.i;if(!c||!isAdm(c)||id===S.u.uid)return;if(!confirm(uOf(id).name+' gruptan çıkarılsın mı?'))return;try{await updateDoc(doc(D,'chats',S.cid),{members:arrayRemove(id)});await sysMsg(S.cid,uOf(id).name+' gruptan çıkarıldı')}catch(e){alert('Çıkarılamadı: '+e.code)}}
  else if(a==='out')signOut(A);
 });
 R.addEventListener('change',e=>{if(e.target.type==='checkbox')S.sel[e.target.dataset.i]=e.target.checked});
@@ -180,9 +197,9 @@ onAuthStateChanged(A,u=>{
  subs.forEach(f=>f());subs=[];if(subMsgs){subMsgs();subMsgs=null}
  if(!u){S.u=null;S.v='auth';S.f={u:'',p:'',p2:''};render(true);return}
  S.u=u;S.v='main';S.tab=0;S.err='';
- subs.push(onSnapshot(collection(D,'users'),s=>{S.users={};s.forEach(d=>S.users[d.id]=d.data());render()}));
+ subs.push(onSnapshot(collection(D,'users'),s=>{S.users={};s.forEach(d=>S.users[d.id]=d.data());const mm=S.users[u.uid];if(mm&&!mm.code&&!S.coding){S.coding=1;claimCode(u.uid,{}).catch(()=>{}).finally(()=>{S.coding=0})}render()}));
  subs.push(onSnapshot(query(collection(D,'chats'),where('members','array-contains',u.uid)),s=>{
-  S.chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((b.last&&b.last.t&&b.last.t.seconds)||0)-((a.last&&a.last.t&&a.last.t.seconds)||0));render()}));
+  S.chats=s.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>((b.last&&b.last.t&&b.last.t.seconds)||0)-((a.last&&a.last.t&&a.last.t.seconds)||0));if((S.v==='chat'||S.v==='info')&&S.seenChat===S.cid&&!S.chats.some(x=>x.id===S.cid)){if(subMsgs){subMsgs();subMsgs=null}S.v='main';alert('Bu gruptan çıkarıldın.');render(true);return}render()}));
  render(true);
 });
 render(true);
